@@ -45,22 +45,27 @@ response = requests.get(
 response.raise_for_status()
 data = response.json() # Data response variable
 
+# Print out the results, index we are starting at, and how many results per page there are
 print("Total Results: ", data["totalResults"])
 print("startIndex: ", data["startIndex"])
 print("resultsPerPage: ", data["resultsPerPage"])
 
 print()
 
+# print out the different aspects of response
 for items in data["vulnerabilities"]:
-    print("CVE ID: ", items["cve"]["id"])
-    print("Published: ", items["cve"]["published"])
-    print("Last Modified: ", items["cve"]["lastModified"])
+    print("CVE ID: ", items["cve"]["id"])                   # print CVE ID
+    print("Published: ", items["cve"]["published"])         # print publish date
+    print("Last Modified: ", items["cve"]["lastModified"])  # print last modified date
     print()
-    for desc in items["cve"]["descriptions"]:
+
+    for desc in items["cve"]["descriptions"]:               # print english description
         if desc["lang"] == "en":
             print("Description:", desc["value"])
+    
     print()
-    print("References:")
+
+    print("References:")                                    # print out references in the form: source ; url
     for reference in items["cve"]["references"]:
         print("   ", reference["source"], "   ;   ", reference["url"])
 
