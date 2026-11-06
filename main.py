@@ -1,34 +1,67 @@
-from dotenv import load_dotenv
+'''
+Task: Build a CVE retrieval tool
+
+Implement a tool that can retrieve CVE entries and their details (e.g., CVE ID, description, severity/score if available, references, published/modified dates).
+The tool should query an upstream source via an API (please research and choose an appropriate CVE API/provider).
+It should be able to iterate through CVE results (e.g., pagination, date ranges, or other supported query parameters) , so you can programmatically go through the CVE list.
+
+Query an upstream CVE source via an API (your choice).
+Iterate through CVEs (pagination/date range/search supported by the API).
+Extract and present key CVE fields (e.g., CVE ID, description, severity/score if available, references, published/modified dates).
+
+A runnable tool that fetches CVE data from your machine.
+Clear output (console + optional JSON/CSV export) demonstrating successful retrieval.
+
+Requirements:
+1. Query CVE source via an API - We are using NVD
+2. When querying a CVE Record, retrieved information can include:
+    CVE ID
+    Description
+    Severity/Score
+    References
+    Published/Modified Dates
+3. Should be able to interate through batches of CVEs
+4. Outputs the result to the console, with the potential for a JSON/CSV export
+'''
 import requests
 import os
+
+from dotenv import load_dotenv
 
 
 url = "https://services.nvd.nist.gov/rest/json/cves/2.0" # URL to the NVD API
 load_dotenv()
 NVD_API_KEY = os.getenv("NVD_API_KEY")
+headers = { "apiKey": NVD_API_KEY }
 
-headers = {
-    "apiKey": NVD_API_KEY
-}
+params = {}
 
 response = requests.get(
     url,
     headers=headers,
-    params={ # Requqest to the API with parameters
-        "cveId": "CVE-2021-44228"
-        ""
-    },
+    params=params,
     timeout=30)
 
 response.raise_for_status()
 data = response.json() # Data response variable
 
-for item in data["vulnerabilities"]:
-    cve = item["cve"]
+print("Total Results: ", data["totalResults"])
+print("startIndex: ", data["startIndex"])
+print("resultsPerPage: ", data["resultsPerPage"])
 
-    print("ID:", cve["id"])
-    print("Published:", cve["published"])
+print()
 
-    for desc in cve["descriptions"]:
+for items in data["vulnerabilities"]:
+    print("CVE ID: ", items["cve"]["id"])
+    print("Published: ", items["cve"]["published"])
+    print("Last Modified: ", items["cve"]["lastModified"])
+    print()
+    for desc in items["cve"]["descriptions"]:
         if desc["lang"] == "en":
             print("Description:", desc["value"])
+    print()
+    print("References:")
+    for reference in items["cve"]["references"]:
+        print("   ", reference["source"], "   ;   ", reference["url"])
+
+    print('\n\n')
