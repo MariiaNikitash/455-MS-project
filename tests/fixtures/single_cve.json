@@ -1,0 +1,87 @@
+{
+  "resultsPerPage": 1,
+  "startIndex": 0,
+  "totalResults": 1,
+  "vulnerabilities": [
+    {
+      "cve": {
+        "id": "CVE-2024-12345",
+        "published": "2024-01-02T10:15:00.123",
+        "lastModified": "2024-02-03T12:00:00+02:00",
+        "vulnStatus": "Analyzed",
+        "descriptions": [
+          {"lang": "es", "value": "Vulnerabilidad de prueba."},
+          {"lang": "en", "value": "Synthetic test vulnerability."}
+        ],
+        "references": [
+          {
+            "url": "https://example.com/advisory",
+            "source": "security@example.com",
+            "tags": ["Vendor Advisory", "Patch"]
+          }
+        ],
+        "metrics": {
+          "cvssMetricV40": [
+            {
+              "source": "security@example.com",
+              "type": "Primary",
+              "cvssData": {
+                "version": "4.0",
+                "baseScore": 9.3,
+                "baseSeverity": "CRITICAL",
+                "vectorString": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"
+              }
+            }
+          ],
+          "cvssMetricV31": [
+            {
+              "source": "nvd@nist.gov",
+              "type": "Primary",
+              "cvssData": {
+                "version": "3.1",
+                "baseScore": 9.8,
+                "baseSeverity": "CRITICAL",
+                "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+              }
+            },
+            {
+              "source": "security@example.com",
+              "type": "Secondary",
+              "cvssData": {
+                "version": "3.1",
+                "baseScore": 8.1,
+                "baseSeverity": "HIGH",
+                "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H"
+              }
+            }
+          ],
+          "cvssMetricV30": [
+            {
+              "source": "security@example.com",
+              "type": "Primary",
+              "cvssData": {
+                "version": "3.0",
+                "baseScore": 0.0,
+                "baseSeverity": "NONE",
+                "vectorString": "CVSS:3.0/AV:L/AC:H/PR:H/UI:R/S:U/C:N/I:N/A:N"
+              }
+            }
+          ],
+          "cvssMetricV2": [
+            {
+              "source": "nvd@nist.gov",
+              "type": "Primary",
+              "baseSeverity": "MEDIUM",
+              "cvssData": {
+                "version": "2.0",
+                "baseScore": 5.0,
+                "vectorString": "AV:N/AC:L/Au:N/C:P/I:N/A:N"
+              }
+            }
+          ],
+          "ssvcV203": [{"source": "security@example.com", "ssvcData": {}}]
+        }
+      }
+    }
+  ]
+}
