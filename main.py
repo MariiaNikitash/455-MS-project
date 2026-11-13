@@ -4,9 +4,7 @@ import argparse
 import sys
 
 from nvd_client import NvdClient, NvdClientError
-from processing import normalize_cve, validate_cve_id
-
-from dotenv import load_dotenv
+from processing import normalize_cve, validate_cve_id, validate_timestamp, validate_date_range
 
 
 def _cve_id_argument(value: str) -> str:
@@ -15,11 +13,16 @@ def _cve_id_argument(value: str) -> str:
     except ValueError as exc:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
+def _date_argument(value: str) -> str:
+    try:
+        return validate_timestamp(value, "Publication date")
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 def _display(value) -> str:
     return "Not available" if value is None else str(value)
 
-
+def display_cve(record: dict) -> None:
     """Display the normalized details, preserving every CVSS assessment."""
     print(f"CVE ID: {record['cve_id']}")
     print(
@@ -60,24 +63,57 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Retrieve one CVE from NVD.")
     parser.add_argument(
         "--cve-id",
-        required=True,
+        required=False,
         type=_cve_id_argument,
         help="CVE identifier, for example CVE-2021-44228",
     )
+    parser.add_argument(
+        "--pub-start",
+        required=False,
+        type=_date_argument,
+        help="Specify start date, for example 2025-01-01T00:00:00Z"
+    )
+    parser.add_argument(
+        "--pub-end",
+        required=False,
+        type=_date_argument,
+        help="Specify end date, for example 2025-10-01T00:00:00Z"
+    )
     args = parser.parse_args(argv)
+    
+    if args.cve_id is None and args.pub_start is None and args.pub_end is None: # Check if arguments provided, if none, error
+        parser.error("Provide a CVE ID or publication date range.")
+
+    if (args.pub_start is None) != (args.pub_end is None): # Check whether both arguments exist
+        parser.error("Both publication start and end date are required.")
+
+    if args.pub_start is not None: # Check publication date range
+        try:
+            validate_date_range(args.pub_start, args.pub_end)
+        except ValueError as exc:
+            parser.error(str(exc))
+
+    # Fetch and display CVEs found
+    count = 0 # Track count of CVEs found
 
     try:
-        raw_cve = next(NvdClient().iter_cves(cve_id=args.cve_id), None)
-        if raw_cve is None:
-            print(f"Error: CVE not found: {args.cve_id}", file=sys.stderr)
-            return 1
-        record = normalize_cve(raw_cve)
+        client = NvdClient()
+
+        for raw_cve in client.iter_cves(cve_id=args.cve_id, pub_start=args.pub_start,pub_end=args.pub_end):
+            record = normalize_cve(raw_cve)
+            display_cve(record)
+            print()
+            count += 1
+
     except (NvdClientError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
-    display_cve(record)
-    print("\nRetrieved 1 CVE record.")
+   # display CVE count
+    if count == 0:
+        print("No matching CVEs found.")
+    else:
+        print(f"Retrieved {count} CVE records(s).\n")
     return 0
 
 
