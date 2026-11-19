@@ -111,9 +111,22 @@ def main(argv: list[str] | None = None) -> int:
 
    # display CVE count
     if count == 0:
+        if args.cve_id is not None:
+            if args.pub_start is not None:
+                print(f"No CVEs found for {args.cve_id} in the date range {args.pub_start} to {args.pub_end}.",
+                      file=sys.stderr)
+            else:
+                print(f"Error: CVE not found: {args.cve_id}", file=sys.stderr)
+            return 1
+
         print("No matching CVEs found.")
+        return 0
+
+    if count == 1:
+        print("Retrieved 1 CVE record.")
     else:
-        print(f"Retrieved {count} CVE records(s).\n")
+        print(f"Retrieved {count} CVE records.")
+
     return 0
 
 
