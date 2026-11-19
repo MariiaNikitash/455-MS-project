@@ -1,7 +1,7 @@
 """Pure transformations from NVD CVE dictionaries to normalized records."""
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 
 def validate_cve_id(value: str) -> str:
@@ -24,6 +24,19 @@ def _utc_timestamp(value: str, field: str) -> str:
     if timestamp.tzinfo is None:
         timestamp = timestamp.replace(tzinfo=timezone.utc)
     return timestamp.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+def validate_timestamp(value: str, field: str) -> str:
+    return _utc_timestamp(value, field)
+
+def validate_date_range(start: str, end: str) -> None:
+    start_date = datetime.fromisoformat(start)
+    end_date = datetime.fromisoformat(end)
+
+    if start_date > end_date: # Check to see if start date is after end date
+        raise ValueError("Start date cannot be after end date.")
+    if end_date - start_date > timedelta(days=120): # Validate to see if range is greater than 120, which NVD cannot handle
+        raise ValueError("Date range cannot exceed 120 days.")
+     
 
 
 def _cvss_metrics(metrics: dict) -> list[dict]:

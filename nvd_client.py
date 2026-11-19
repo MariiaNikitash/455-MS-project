@@ -22,14 +22,24 @@ class NvdClient:
         load_dotenv()
         self.api_key = api_key if api_key is not None else os.getenv("NVD_API_KEY")
 
-    def iter_cves(self, *, cve_id: str) -> Iterator[dict]:
-        """Yield zero or one raw CVE dictionary for a validated CVE ID."""
+    def iter_cves(self, *, cve_id: str | None = None, pub_start: str | None = None, pub_end: str | None = None) -> Iterator[dict]:
+        """Yield raw CVE dictionary matching a CVE ID or publication date range."""
         headers = {"apiKey": self.api_key} if self.api_key else {}
+
+        params = {}
+
+        if cve_id is not None: # if we parse in a CVE ID, load that into parameters
+            params["cveId"] = cve_id
+
+        if pub_start is not None and pub_end is not None: # if we parse in start and end date
+            params["pubStartDate"] = pub_start
+            params["pubEndDate"]= pub_end
+
         try:
             response = requests.get(
                 NVD_API_URL,
                 headers=headers,
-                params={"cveId": cve_id},
+                params=params,
                 timeout=REQUEST_TIMEOUT,
             )
             response.raise_for_status()
@@ -55,13 +65,13 @@ class NvdClient:
             raise NvdClientError("NVD response is missing a CVE list.")
 
         entries = payload["vulnerabilities"]
-        if len(entries) > 1:
+        if cve_id is not None and len(entries) > 1:
             raise NvdClientError("NVD returned multiple records for a single CVE ID.")
 
         for entry in entries:
             if not isinstance(entry, dict) or not isinstance(entry.get("cve"), dict):
                 raise NvdClientError("NVD returned a malformed CVE record.")
             cve = entry["cve"]
-            if cve.get("id") != cve_id:
+            if cve_id is not None and cve.get("id") != cve_id:
                 raise NvdClientError("NVD returned a different CVE ID than requested.")
             yield cve
