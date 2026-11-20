@@ -52,6 +52,14 @@ uv run main.py --cve-id CVE-2021-44228
 
 Replace the ID to look up another CVE. The ID must use the format `CVE-YYYY-NNNN`, with at least four digits in the final component.
 
+Retrieve and display by publication date range:
+
+```bash
+uv run main.py --pub-start "2025-01-01T00:00:00Z" --pub-end "2025-01-01T01:00:00Z"
+```
+
+Both arguments must be provided together and must follow the ISO 8601 timestamp format of `YYYY-MM-DDTHH:MM:SSZ`. The program validates that the start date does not occur after the end date, and that the specified range does not exceed 120 days, which is the max allowed by the NVD API.
+
 View available arguments:
 
 ```bash
