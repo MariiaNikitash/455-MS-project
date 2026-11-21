@@ -2,11 +2,11 @@
 
 ## 1. Purpose, requirements, and scope
 
-Build a local Python CLI that retrieves NVD CVEs and displays readable details. Support date-range collection with pagination and a single-CVE convenience mode. JSON is the primary, optional export format.
+Build a local Python CLI that retrieves NVD CVEs and displays readable details. The MVP supports publication-date collection with pagination, single-CVE lookup, and combined ID/date filtering. File export is optional post-MVP work; JSON is the primary post-MVP export format.
 
 Required details: ID, description, published/modified dates, references, and available severity assessments. Submit an accessible repository, runnable code, README, authentic sample output, and a report of at most two pages.
 
-CSV is an optional post-MVP milestone. Defer platform/product filters, long-range splitting, historical collection, databases, hosting, and analysis. Status: proposed behavior; the existing prototype and uv setup remain the starting point.
+Defer JSON/CSV export, advanced retries/hardening, platform/product filters, long-range splitting, historical collection, databases, hosting, and analysis. Pagination is the final MVP coding milestone. Documentation and submission verification are required finishing work.
 
 ## 2. CLI and configuration
 
@@ -14,16 +14,20 @@ CSV is an optional post-MVP milestone. Defer platform/product filters, long-rang
 # Console details only; no output file required.
 uv run main.py --cve-id CVE-2021-44228
 
-# Console details plus optional JSON export.
-uv run main.py --published-from 2024-01-01 --published-to 2024-02-01 \
-  --output output/january.json
+# Publication-date query; console output only.
+uv run python main.py --pub-start "2025-01-01T00:00:00Z" \
+  --pub-end "2025-01-01T01:00:00Z"
+
+# Combined filter: return this CVE only if published in the interval.
+uv run python main.py --cve-id CVE-2021-44228 \
+  --pub-start "2021-12-01T00:00:00Z" --pub-end "2021-12-31T00:00:00Z"
 ```
 
-- Require exactly one mode: a CVE ID or both publication dates. `--output` is optional; without it, create no export file.
-- Validate IDs, including sequence numbers longer than four digits. Dates use `YYYY-MM-DD`, midnight UTC, inclusive start/exclusive end; the example covers January. Reject invalid/reversed dates and ranges exceeding NVD's supported window before requesting data.
-- Keep API configuration in the client: endpoint, optional key, timeout, page size, pacing, and retry settings. Read `NVD_API_KEY` from the environment or `.env`, with environment precedence. Omit absent keys and never log credentials.
-- `--help` and input validation work offline. Console output uses labeled CVE blocks containing the required details, available CVSS versions/sources, explicit missing-value messages, and a final record count. Report a saved path only when export was requested. Diagnostics go to stderr; failures return nonzero.
-- JSON is the default export when `--output` is supplied. CSV selection and flattening rules are defined only in the optional CSV milestone.
+- Accept a CVE ID, both publication dates, or an ID plus both dates. Require at least one filter and always pair publication dates. Combined filters mean that the requested CVE must also match the interval; verify upstream behavior before considering this combination fully validated.
+- Validate IDs, including sequence numbers longer than four digits. `--pub-start`/`--pub-end` accept ISO 8601 timestamps containing a time, normalize offsets to UTC, and interpret timezone-free timestamps as UTC. Reject invalid/reversed dates and ranges longer than 120 days before requesting data. Use verified upstream publication-boundary semantics and document endpoint inclusivity; do not assume an exclusive end.
+- Keep API configuration in the client: endpoint, optional key, timeout, page size, and pacing; retry settings follow post-MVP. Read `NVD_API_KEY` from the environment or `.env`, with environment precedence. Omit absent keys and never log credentials.
+- `--help` and input validation work offline. Console output uses labeled CVE blocks containing the required details, available CVSS versions/sources, explicit missing-value messages, and a final record count. Diagnostics go to stderr; failures return nonzero.
+- File export is outside the MVP. Post-MVP, an optional `--output` defaults to JSON; CSV selection and flattening follow separately.
 
 ## 3. Architecture and Data Flow
 
@@ -46,23 +50,23 @@ uv.lock
 
 | Module | Responsibility |
 | --- | --- |
-| `nvd_client.py` | HTTP requests, API configuration, response validation, pagination, publication-boundary filtering, pacing, retries, and client errors. |
+| `nvd_client.py` | HTTP requests, API configuration, response validation, pagination, basic pacing, and client errors. Advanced retries follow post-MVP. |
 | `processing.py` | Pure transformation of raw NVD CVE dictionaries into normalized records; no network, console, or file operations. |
-| `main.py` | CLI arguments, orchestration, deduplication, readable console output, JSON export, and optional post-MVP CSV export. |
+| `main.py` | CLI arguments, orchestration, ID deduplication, and readable console output/counts. JSON/CSV export follows post-MVP. |
 
-Planned interfaces:
+Interfaces:
 
-- `NvdClient.iter_cves(*, cve_id=None, published_from=None, published_to=None) -> Iterator[dict]`: accept validated IDs or UTC-aware date bounds. Yield individual raw CVE dictionaries without the outer `cve` wrapper; hide pagination. Retrieval/response failures raise `NvdClientError` during iteration.
+- `NvdClient.iter_cves(*, cve_id=None, pub_start=None, pub_end=None) -> Iterator[dict]`: accept a validated ID and/or paired normalized UTC timestamp strings. Retrieve all matching pages using `startIndex` and `resultsPerPage`, yielding individual raw CVE dictionaries without the outer `cve` wrapper. Hide pagination inside the iterator. Retrieval/response failures raise `NvdClientError` during iteration.
 - `normalize_cve(cve: dict) -> dict`: return the record defined below. Apply missing-value rules; malformed required IDs/dates raise `ValueError`.
-- `main(argv=None) -> int`: accept an argument list, or process arguments when omitted. Coordinate retrieval, normalization, console display, and requested export; return zero on success and nonzero with diagnostics on expected failures.
+- `main(argv=None) -> int`: accept an argument list, or process arguments when omitted. Coordinate retrieval, normalization, and console display/counts; return zero on success and nonzero with diagnostics on expected failures.
 
-Flow: CLI validation → client record iterator → normalization → deduplication/collection → console details → optional export. Imports make no requests; execution uses a main function and guard.
+Flow: CLI validation → client record iterator → normalization → ID deduplication → console details/count. Process records incrementally without a master collection. Imports make no requests; execution uses a main function and guard.
 
 `tests/` mirrors the three modules. Fixtures describe raw responses and expected normalized records; fake iterators isolate CLI/output tests from networking.
 
 ## 4. Data contract and output
 
-When JSON export is requested, save `query` (ID/dates, no credentials), `retrieved_at` (UTC), `record_count`, and `records`. Console and export use the same normalized records.
+The MVP displays the following normalized records in the console. For optional post-MVP JSON export, save `query` (ID/dates, no credentials), `retrieved_at` (UTC), `record_count`, and `records`, using the same record contract.
 
 | Record field | Rule |
 | --- | --- |
@@ -75,17 +79,19 @@ When JSON export is requested, save `query` (ID/dates, no credentials), `retriev
 
 Use `[]` for missing collections and `null` for absent optional values. Preserve zero scores, all assessments, and unscored/rejected CVEs. Invalid required IDs/dates fail visibly. [NVD schema](https://csrc.nist.gov/schema/nvd/api/2.0/cve_api_json_2.0.schema).
 
-For requested exports, create parent directories and refuse overwrites. After complete retrieval, write a temporary file and publish the final file only on success. Failures must not leave a complete-looking dataset. Empty date queries succeed with a zero-record console summary and, if requested, empty JSON records. Unknown explicit IDs fail clearly.
+Empty dates-only queries return zero with a no-match summary. An explicit ID with no match returns nonzero and prints to stderr; combined queries explain that no CVE matched the ID and interval, rather than implying the ID does not exist.
+
+Post-MVP export safety: create parent directories and refuse overwrites. After complete retrieval, write a temporary file and publish the final file only on success. Failures must not leave a complete-looking dataset; empty dates-only exports contain an empty records list.
 
 ## 5. Retrieval and failure handling
 
-Use `https://services.nvd.nist.gov/rest/json/cves/2.0` with `cveId`, or paired `pubStartDate`/`pubEndDate`. Verify API boundary behavior and locally enforce the requested half-open publication interval.
+Use `https://services.nvd.nist.gov/rest/json/cves/2.0` with `cveId`, paired `pubStartDate`/`pubEndDate`, or both. Verify combined filtering and document upstream publication-boundary behavior; do not promise a half-open interval without enforcing it locally.
 
-Retrieve batches using `resultsPerPage` and `startIndex`. Start at zero; validate the returned index, then advance by actual records received until reaching `totalResults`. Yield individual records internally. Do not stop merely on a short page. Unexpected empty pages, invalid JSON, mismatched offsets, and inconsistent pagination fail visibly.
+For date-only queries, retrieve batches using `resultsPerPage` and `startIndex`. Start at zero; require the returned index to match the requested offset, then advance by actual records received until reaching `totalResults`. Yield individual records internally. Do not stop merely on a short page. Unexpected empty pages, invalid JSON, mismatched offsets, and inconsistent pagination fail visibly. ID-containing queries return at most one matching record and need no additional pages.
 
-Use sequential requests, a 30-second timeout, and pacing for every attempt. Retry connection failures, timeouts, 429, and transient 5xx errors with backoff/`Retry-After`, at most three attempts. Permanent request/access errors fail promptly; do not blindly retry 403.
+Use a 30-second timeout, clear request/response errors, sequential requests, and basic compliant pacing. MVP request failures stop the run with a nonzero exit status; console output may already contain partial results, so do not print a successful completion summary after failure. Post-MVP: retry connection failures, timeouts, 429, and transient 5xx errors with backoff/`Retry-After`, at most three attempts. Permanent request/access errors fail promptly; do not blindly retry 403.
 
-Confirm/document page, date-window, and rate limits before coding: [API reference](https://nvd.nist.gov/developers/vulnerabilities), [developer guidance](https://nvd.nist.gov/developers/start-here). Exact settings remain a planning verification item. Basic compliant pacing applies before live repeated requests; milestone 6 completes reliability hardening.
+Confirm/document page, date-window, and rate limits before implementing pagination: [API reference](https://nvd.nist.gov/developers/vulnerabilities), [developer guidance](https://nvd.nist.gov/developers/start-here). Cap ranges at 120 days; verify this and page/pacing settings against upstream guidance. Basic compliant pacing applies before live repeated requests; advanced reliability hardening is post-MVP.
 
 ## 6. Alternatives considered
 
@@ -93,44 +99,50 @@ Confirm/document page, date-window, and rate limits before coding: [API referenc
 | --- | --- |
 | Source | NVD supplies the required CVE/enrichment fields. Official CVE records and GHSA remain alternatives for later validation/enrichment. |
 | Interface | CLI versus web application: CLI meets local execution needs with little infrastructure. |
-| Output/storage | Console details plus optional JSON versus mandatory files/CSV/database: readable results need no file, while JSON preserves nested data. CSV follows the MVP. |
+| Query filters | Allow ID and dates separately or together versus exclusive modes: combined filtering is flexible and shares the retrieval flow, but adds validation cases and requires careful no-match wording. |
+| Output/storage | Console-only MVP versus mandatory files/CSV/database: readable results meet the local retrieval requirement. Optional post-MVP JSON preserves nested data; CSV follows separately. |
 | Organization | Three flat modules versus one script or a package: independently testable responsibilities without packaging overhead. |
 
 ## 7. Dependencies and environment
 
-Preserve the existing uv setup, `pyproject.toml`, `uv.lock`, `.python-version`, and Python 3.14 configuration. Runtime dependencies remain `requests` and `python-dotenv`; pytest configuration/development dependency setup is planned for milestone 1. Use built-in argument/date/JSON/CSV/file modules. Ignore secrets, environments, caches, and generated output.
+Preserve the existing uv setup, `pyproject.toml`, `uv.lock`, `.python-version`, and Python 3.14 configuration. Runtime dependencies remain `requests` and `python-dotenv`, with pytest for testing. Use built-in argument/date modules and, for later exports, JSON/CSV/file modules. Ignore secrets, environments, caches, and generated output.
 
 ## 8. Testing
 
-Add tests alongside each feature using small fixtures and mocked HTTP/clock functions. Automated tests run offline without real delays.
+Cover single-CVE retrieval, processing, console output, errors, and pagination with focused automated tests using mocked HTTP/clock functions. Automated tests run offline without real delays. Manual checks cover date validation and combined filtering for the MVP; broader automated date-query coverage is post-MVP. Keep existing tests passing.
 
 - **Processing:** missing fields, language fallback, multiple CVSS versions/sources, zero scores, references, rejected status, malformed required fields.
-- **Client:** date boundaries, multiple/partial/empty pages, offset mismatches, malformed responses, pacing, bounded retries, permanent errors.
-- **CLI/output:** invalid/conflicting inputs, offline help, console details without `--output`, deduplication, unknown IDs, JSON read-back, existing files, and failed retrieval/writes.
-- **Live verification:** small single-ID and multi-page date queries; compare displayed counts/details with exports. Check keyed/keyless behavior separately and capture authentic output.
+- **Client:** test multiple/partial/empty pages, offset mismatches, malformed responses, pacing, and duplicate handling. Verify date boundaries and combined filters, including intervals containing and excluding a known CVE's publication date.
+- **CLI/output:** invalid/missing inputs, offline help, console details, deduplication/counts, and ID-only/combined no-match failures. Manually check valid, missing, invalid, reversed, and oversized date ranges.
+- **Live verification:** small single-ID, combined, and multi-page date queries; check counts/details, keyed/keyless behavior, and capture authentic output.
+- **Post-MVP:** broader automated date-query coverage, bounded retries, JSON/CSV read-back, existing files, and failed retrieval/writes during export.
 
 ## 9. Implementation Plan
 
-Each milestone ends with review and a focused commit containing its relevant tests. Milestones 1–6 build the MVP; milestone 8 completes submission verification. Milestone 7 is optional, may be skipped, and may follow milestone 8.
+Implement the MVP in the following order, ending with pagination. Each stage ends with review and a focused commit; existing tests must pass. Use manual date-query checks and focused automated pagination coverage. Documentation and submission verification follow as required finishing work.
 
 | Milestone | Scope | Completion check | Testing expectations |
 | --- | --- | --- | --- |
 | 1. Project Structure and Testing | Preserve uv/Python 3.14 and prototype behavior; organize flat modules and `tests/`; configure pytest. | Dependencies install and the test runner works. | Verify discovery/imports without live requests. |
-| 2. Single CVE Retrieval | Implement one-ID lookup, basic field normalization, and readable console output. | One CVE is retrieved and displayed. | Mock retrieval; check mapping, console fields, and missing values. |
-| 3. Date Range Queries | Add/validate publication dates and retrieve a supported interval. | A date query returns matching CVEs; full traversal follows in milestone 4. | Test invalid dates, UTC bounds, inclusive start/exclusive end. |
-| 4. Pagination | Add `startIndex`/`resultsPerPage` and automatic multi-page retrieval. | All matching CVEs are retrieved automatically within the supported window. | Test multiple pages, partial/empty results, offsets, and duplicates. |
-| 5. JSON Export | Add optional `--output` and save normalized CVEs/metadata. | Saved JSON can be read back correctly; console-only mode still works. | Check JSON fields/counts and that omitted output creates no file. |
-| 6. Reliability | Complete pacing, bounded retries, errors, and safe output publishing. | Expected failures are handled and tested. | Simulate throttling/timeouts, retry exhaustion, permanent errors, existing files, and interrupted writes. |
-| 7. Optional CSV Export | Define flattening of nested references/CVSS assessments, implement export, and add tests. | CSV contains valid records under the documented mapping. | Read CSV back; test quoting, missing values, and multiple nested items. |
-| 8. Documentation and Verification | Live NVD checks, README, authentic samples, and report. | Another student reproduces results from a fresh checkout. | Reproduce documented commands, keyed/keyless checks, and sample results. |
+| 2. Single CVE Retrieval | Implement one-ID lookup, the complete Section 4 record contract, and readable console output. | One CVE is retrieved and displayed. | Mock retrieval; check mapping, all CVSS assessments, console fields, and missing values. |
+| 3. Date Range Queries | Add/validate timestamps and support date-only or combined ID/date queries. | Queries return matching CVEs; full date traversal follows in milestone 4. | Manual input, UTC, boundary, and combined-filter checks; broader automated date coverage is post-MVP. |
+| 4. Pagination | Add `startIndex`/`resultsPerPage`, automatic multi-page retrieval, basic pacing, and ID deduplication. | All matching CVEs are retrieved and counted once within the supported window; failures stop clearly. | Test multiple pages, partial/empty results, offsets, duplicates, and pacing; perform a live multi-page check. |
 
-Integrate a minimal query early and expand it incrementally. Console/export must meet the complete data contract before MVP acceptance. Keep `main` stable and update this design when interfaces change.
+Before submission, finish README/design updates, authentic samples, the report, and fresh-checkout verification. Reproduce documented commands and verify keyed/keyless behavior; another student must be able to run the tool.
+
+Optional post-MVP milestones:
+
+- **JSON Export:** add optional `--output`, normalized records/metadata, safe publishing, and read-back/failure tests. Console-only operation remains supported.
+- **Reliability:** add bounded retries/backoff and broader error/response hardening, with throttling, timeout, and retry-exhaustion tests.
+- **CSV Export:** define nested-field flattening, implement export, and test quoting, missing values, and multiple nested items.
+
+Console details must meet the complete Section 4 record contract before MVP acceptance. Keep `main` stable and update this design when interfaces change.
 
 ## 10. Acceptance criteria, assumptions, and limitations
 
-- A fresh checkout can install locked dependencies and run both lookup modes using README instructions.
-- Console details are readable without an output file. Requested JSON preserves normalized details and metadata; CSV is not required for MVP acceptance.
+- A fresh checkout can install locked dependencies and run ID-only, dates-only, and combined queries using README instructions.
+- Console details preserve the full normalized record contract and are readable without an output file. JSON/CSV export is not required for MVP acceptance.
 - Date mode retrieves all matching pages within its supported window. Missingness is explicit, counts are correct, and failures cannot appear successful.
 - The accessible repository and report of at most two pages include the source, design, commands, authentic examples, and limitations.
 
-Records remain in memory; oversized ranges are rejected and interrupted runs restart. Upstream changes prevent a transactional snapshot; preserve query/retrieval time in exports and document this limitation. CVE records alone do not establish AI authorship or causation.
+Records are processed incrementally; each response page is held in memory, with a seen-ID set for deduplication. Oversized ranges are rejected and interrupted runs restart. Upstream changes prevent a transactional snapshot; document this limitation and preserve query/retrieval time in future exports. CVE records alone do not establish AI authorship or causation.

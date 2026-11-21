@@ -120,3 +120,45 @@ def test_importing_main_does_not_request_data(mock_get):
     importlib.reload(main)
 
     mock_get.assert_not_called()
+
+
+DATE_ARGUMENTS = [
+    "--pub-start", "2024-01-01T00:00:00Z", "--pub-end", "2024-01-03T00:00:00Z",
+]
+
+
+def test_date_results_are_deduplicated_across_pages(make_page, mock_pages, capsys):
+    get = mock_pages(make_page(0, [1, 1], 3), make_page(2, [2], 3))
+    assert main.main(DATE_ARGUMENTS) == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert captured.out.count("CVE ID: CVE-2024-0001") == 1
+    assert captured.out.count("CVE ID: CVE-2024-0002") == 1
+    assert "Retrieved 2 CVE records." in captured.out
+    assert get.call_args_list[1].kwargs["params"]["startIndex"] == 2
+
+
+def test_later_page_failure_has_no_success_summary(make_page, mock_pages, capsys):
+    mock_pages(make_page(0, [1], 2), requests.Timeout())
+    assert main.main(DATE_ARGUMENTS) == 1
+    captured = capsys.readouterr()
+    assert "CVE ID: CVE-2024-0001" in captured.out
+    assert "Retrieved" not in captured.out
+    assert "timed out" in captured.err
+
+
+def test_empty_date_query_succeeds(make_page, mock_pages, capsys):
+    mock_pages(make_page(0, [], 0))
+    assert main.main(DATE_ARGUMENTS) == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert "No matching CVEs found." in captured.out
+
+
+def test_empty_combined_query_fails_without_claiming_id_does_not_exist(mock_get, capsys):
+    mock_get.return_value.json.return_value = {"vulnerabilities": []}
+    assert main.main(["--cve-id", "CVE-2024-12345", *DATE_ARGUMENTS]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "in the date range" in captured.err
+    assert "CVE not found" not in captured.err

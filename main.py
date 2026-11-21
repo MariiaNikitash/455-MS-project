@@ -1,4 +1,4 @@
-"""Command-line lookup and readable display of one NVD CVE."""
+"""Command-line retrieval and readable display of NVD CVEs."""
 
 import argparse
 import sys
@@ -59,8 +59,10 @@ def display_cve(record: dict) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Retrieve, normalize, and display one CVE; return a process exit status."""
-    parser = argparse.ArgumentParser(description="Retrieve one CVE from NVD.")
+    """Retrieve, normalize, and display unique CVEs; return a process exit status."""
+    parser = argparse.ArgumentParser(
+        description="Retrieve an NVD CVE by ID and/or CVEs in a publication range."
+    )
     parser.add_argument(
         "--cve-id",
         required=False,
@@ -77,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
         "--pub-end",
         required=False,
         type=_date_argument,
-        help="Specify end date, for example 2025-10-01T00:00:00Z"
+        help="Specify end date, for example 2025-01-02T00:00:00Z"
     )
     args = parser.parse_args(argv)
     
@@ -95,12 +97,16 @@ def main(argv: list[str] | None = None) -> int:
 
     # Fetch and display CVEs found
     count = 0 # Track count of CVEs found
+    seen_ids = set()
 
     try:
         client = NvdClient()
 
         for raw_cve in client.iter_cves(cve_id=args.cve_id, pub_start=args.pub_start,pub_end=args.pub_end):
             record = normalize_cve(raw_cve)
+            if record["cve_id"] in seen_ids:
+                continue
+            seen_ids.add(record["cve_id"])
             display_cve(record)
             print()
             count += 1
