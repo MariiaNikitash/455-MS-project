@@ -55,7 +55,7 @@ Replace the ID to look up another CVE. The ID must use the format `CVE-YYYY-NNNN
 Retrieve all matching pages for a publication interval:
 
 ```bash
-uv run python main.py --pub-start "2025-01-01T00:00:00Z" \
+uv run main.py --pub-start "2025-01-01T00:00:00Z" \
   --pub-end "2025-01-01T01:00:00Z"
 ```
 
@@ -66,7 +66,7 @@ Bounds are passed to NVD without local boundary filtering. Live checks with `CVE
 Optionally combine an ID with dates to retrieve it only if its publication date matches the interval:
 
 ```bash
-uv run python main.py --cve-id CVE-2021-44228 \
+uv run main.py --cve-id CVE-2021-44228 \
   --pub-start "2021-12-01T00:00:00Z" --pub-end "2021-12-31T00:00:00Z"
 ```
 
