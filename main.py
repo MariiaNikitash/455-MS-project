@@ -1,6 +1,7 @@
 """Command-line retrieval and readable display of NVD CVEs."""
 
 import argparse
+import json
 import sys
 
 from nvd_client import NvdClient, NvdClientError
@@ -81,6 +82,12 @@ def main(argv: list[str] | None = None) -> int:
         type=_date_argument,
         help="Specify end date, for example 2025-01-02T00:00:00Z"
     )
+    parser.add_argument(
+        "--json",
+        required=False,
+        action="store_true",
+        help="Output results to JSON file"
+    )
     args = parser.parse_args(argv)
     
     if args.cve_id is None and args.pub_start is None and args.pub_end is None: # Check if arguments provided, if none, error
@@ -98,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
     # Fetch and display CVEs found
     count = 0 # Track count of CVEs found
     seen_ids = set()
+    records = []
 
     try:
         client = NvdClient()
@@ -107,15 +115,22 @@ def main(argv: list[str] | None = None) -> int:
             if record["cve_id"] in seen_ids:
                 continue
             seen_ids.add(record["cve_id"])
-            display_cve(record)
-            print()
+            records.append(record)
+
+            if not args.json:
+                display_cve(record)
+                print()
             count += 1
 
     except (NvdClientError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
-   # display CVE count
+    if args.json:
+        with open("cve_results.json", "w") as f:
+            json.dump(records, f, indent=4)
+
+    # display CVE count
     if count == 0:
         if args.cve_id is not None:
             if args.pub_start is not None:
